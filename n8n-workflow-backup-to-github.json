@@ -1,0 +1,334 @@
+{
+  "name": "Backup n8n Workflows to GitHub",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 🔁 Backup n8n Workflows to GitHub\n\nBacks up every workflow in your n8n instance to a GitHub repo every hour. New workflows are added, changed ones are committed, unchanged ones are skipped.\n\n### Setup\n1. Create a GitHub repo (**private** recommended).\n2. In n8n, go to **Settings → n8n API**, create an API key, and add it as an **n8n API** credential on **Get All Workflows**.\n3. Add a **GitHub** credential to the three GitHub nodes. The token needs write access to the repo's contents.\n4. In those three GitHub nodes, replace `YOUR_GITHUB_OWNER` and `YOUR_REPO_NAME`.\n5. Activate the workflow.\n\nFiles are saved as `workflows/<name>_<id>.json`.",
+        "height": 520,
+        "width": 420,
+        "color": 4
+      },
+      "id": "0b7d3c1e-5f2a-4a8e-9c61-2d4f8e7a1b30",
+      "name": "Setup Instructions",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -240,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "triggerAtMinute": 5
+            }
+          ]
+        }
+      },
+      "id": "632acd37-281c-41e5-bda9-30dce1812e6a",
+      "name": "Every Hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        240,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "returnAll": true,
+        "filters": {
+          "excludePinnedData": true
+        },
+        "requestOptions": {}
+      },
+      "id": "ccf87899-4f26-4026-89dd-17f2647bef45",
+      "name": "Get All Workflows",
+      "type": "n8n-nodes-base.n8n",
+      "typeVersion": 1,
+      "position": [
+        464,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "wf-id",
+              "name": "workflowId",
+              "value": "={{ $json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "wf-name",
+              "name": "workflowName",
+              "value": "={{ $json.name }}",
+              "type": "string"
+            },
+            {
+              "id": "file-path",
+              "name": "filePath",
+              "value": "=workflows/{{ ($json.name || \"untitled\").replace(/[^a-zA-Z0-9 _-]/g, \"\").trim().replace(/\\s+/g, \"-\") }}_{{ $json.id }}.json",
+              "type": "string"
+            },
+            {
+              "id": "file-content",
+              "name": "fileContent",
+              "value": "={{ JSON.stringify($json, null, 2) }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "69213f76-359e-4f56-a164-b9fcf16de126",
+      "name": "Prepare Backup File",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        688,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "ae6f985c-f119-4743-81fd-9e7cf321689c",
+      "name": "Loop Over Workflows",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        912,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "get",
+        "owner": {
+          "__rl": true,
+          "mode": "name",
+          "value": "YOUR_GITHUB_OWNER"
+        },
+        "repository": {
+          "__rl": true,
+          "mode": "name",
+          "value": "YOUR_REPO_NAME"
+        },
+        "filePath": "={{ $json.filePath }}",
+        "asBinaryProperty": false,
+        "additionalParameters": {}
+      },
+      "id": "24c9f0b4-d731-478e-9676-5d1f8ce740b2",
+      "name": "Get Existing Backup",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1.1,
+      "position": [
+        1120,
+        320
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ ($json.content || \"\").replace(/\\n/g, \"\").base64Decode() }}",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              },
+              "rightValue": "={{ $('Prepare Backup File').item.json.fileContent }}"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e52f0820-1837-490a-a2b5-c952ecb1bd68",
+      "name": "Workflow Changed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1344,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "edit",
+        "owner": {
+          "__rl": true,
+          "mode": "name",
+          "value": "YOUR_GITHUB_OWNER"
+        },
+        "repository": {
+          "__rl": true,
+          "mode": "name",
+          "value": "YOUR_REPO_NAME"
+        },
+        "filePath": "={{ $('Prepare Backup File').item.json.filePath }}",
+        "fileContent": "={{ $('Prepare Backup File').item.json.fileContent }}",
+        "commitMessage": "=Update workflow: {{ $('Prepare Backup File').item.json.workflowName }}"
+      },
+      "id": "2a9943f1-cb79-4c6e-b818-fec7b85e73ee",
+      "name": "Update Backup in GitHub",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1.1,
+      "position": [
+        1568,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "owner": {
+          "__rl": true,
+          "mode": "name",
+          "value": "YOUR_GITHUB_OWNER"
+        },
+        "repository": {
+          "__rl": true,
+          "mode": "name",
+          "value": "YOUR_REPO_NAME"
+        },
+        "filePath": "={{ $('Prepare Backup File').item.json.filePath }}",
+        "fileContent": "={{ $('Prepare Backup File').item.json.fileContent }}",
+        "commitMessage": "=Add new workflow: {{ $('Prepare Backup File').item.json.workflowName }}"
+      },
+      "id": "ce56cc72-2744-490a-bd9d-c44d43215e9c",
+      "name": "Create Backup in GitHub",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1.1,
+      "position": [
+        1344,
+        464
+      ]
+    }
+  ],
+  "connections": {
+    "Every Hour": {
+      "main": [
+        [
+          {
+            "node": "Get All Workflows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get All Workflows": {
+      "main": [
+        [
+          {
+            "node": "Prepare Backup File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Backup File": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Workflows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Workflows": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Get Existing Backup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Existing Backup": {
+      "main": [
+        [
+          {
+            "node": "Workflow Changed?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Backup in GitHub",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Changed?": {
+      "main": [
+        [
+          {
+            "node": "Update Backup in GitHub",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Over Workflows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Backup in GitHub": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Workflows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Backup in GitHub": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Workflows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
